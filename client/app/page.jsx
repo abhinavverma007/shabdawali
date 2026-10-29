@@ -10,6 +10,7 @@ import Lobby from '../components/Lobby';
 import Game from '../components/Game';
 import Results from '../components/Results';
 import Footer from '../components/Footer';
+import Toast from '../components/Toast';
 
 export default function Home() {
   const [lang, setLang] = useState('hi');
@@ -21,6 +22,7 @@ export default function Home() {
   const [error, setError] = useState('');
   const [meId, setMeId] = useState(null);
   const [resuming, setResuming] = useState(false);
+  const [toasts, setToasts] = useState([]);
   const hadRoom = useRef(false);
   const inRoom = useRef(false);
 
@@ -29,6 +31,25 @@ export default function Home() {
   const names = useMemo(() => displayNames(room?.players ?? []), [room?.players]);
   const uiLang = room?.lang ?? lang;
   const t = STRINGS[uiLang];
+  // The notice handler is registered once, so it reads the current language and names through refs.
+  const uiLangRef = useRef(uiLang);
+  const namesRef = useRef(names);
+  uiLangRef.current = uiLang;
+  namesRef.current = names;
+
+  const addToast = (text) => {
+    const id = Math.random();
+    setToasts((list) => [...list.slice(-2), { id, text }]);
+    setTimeout(() => setToasts((list) => list.filter((x) => x.id !== id)), 4500);
+  };
+
+  // A shared link carries the room's language (?lang=en), so a guest does not land on a page in the wrong language.
+  useEffect(() => {
+    try {
+      const l = new URLSearchParams(window.location.search).get('lang');
+      if (l === 'en' || l === 'hi') setLang(l);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     const socket = getSocket();
@@ -68,6 +89,19 @@ export default function Home() {
     const onConnectError = () => setError('connection');
     // The same player opened the game in another tab; that tab owns the seat now. Keep the stored session for it.
     const onTaken = () => resetScreen();
+    // Things that happen to the room: someone left (and who hosts now), the host changed the language.
+    const onNotice = (n) => {
+      const tt = STRINGS[uiLangRef.current];
+      const nm = namesRef.current;
+      if (n.type === 'left') {
+        let text = tt.noticeLeft(nm.get(n.id) ?? n.name);
+        if (n.newHostId) text += ' · ' + tt.noticeHost(nm.get(n.newHostId) ?? n.newHostName);
+        addToast(text);
+      } else if (n.type === 'lang') {
+        // Said in the new language, the one the room is using from now on.
+        addToast(STRINGS[n.lang].noticeLang(n.lang === 'hi' ? 'हिन्दी' : 'English'));
+      }
+    };
     socket.on('connect', onConnect);
     socket.on('connect_error', onConnectError);
     socket.on('room:state', onState);
@@ -75,6 +109,7 @@ export default function Home() {
     socket.on('round:result', onResult);
     socket.on('game:end', onEnd);
     socket.on('session:taken', onTaken);
+    socket.on('room:notice', onNotice);
     if (socket.connected) onConnect();
     return () => {
       socket.off('connect', onConnect);
@@ -84,6 +119,7 @@ export default function Home() {
       socket.off('round:result', onResult);
       socket.off('game:end', onEnd);
       socket.off('session:taken', onTaken);
+      socket.off('room:notice', onNotice);
     };
   }, []);
 
@@ -203,7 +239,9 @@ export default function Home() {
         meId={meId}
         names={names}
         leaderboard={final?.leaderboard ?? [...room.players].sort((a, b) => b.score - a.score)}
+        history={final?.history}
         onAgain={() => getSocket().emit('game:again')}
+        onSoloSettings={() => getSocket().emit('game:again', { toLobby: true })}
         onLeave={leave}
       />
     );
@@ -217,6 +255,7 @@ export default function Home() {
         names={names}
         round={gameRound}
         result={room.phase === 'between' ? result : null}
+        onNext={() => getSocket().emit('round:skip')}
         onLeave={leave}
       />
     );
@@ -224,6 +263,7 @@ export default function Home() {
 
   return (
     <main className="mx-auto flex min-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))] w-full min-w-0 max-w-2xl flex-col overflow-x-hidden px-4 py-4">
+      <Toast toasts={toasts} />
       {screen}
       {/* Hidden while a game is running so the puzzle keeps every pixel of the screen. */}
       {!inGame && <Footer />}

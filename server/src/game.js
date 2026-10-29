@@ -5,6 +5,8 @@ export const MAX_PLAYERS = 10;
 export const LIMITS = { rounds: [1, 20], timer: [15, 120] };
 export const DEFAULTS = { rounds: 5, timer: 30 };
 const BETWEEN_ROUNDS_MS = 5000;
+// Alone there is nobody to wait for, so the pause between words is shorter (and can be skipped).
+const SOLO_BREAK_MS = 4500;
 // How long a dropped player's seat is held, so a mistaken refresh or a network blip does not cost them the game.
 const GRACE_MS = 45000;
 const HINT_COST = { letter: 25, category: 10 };
@@ -22,13 +24,22 @@ const cleanName = (name) => [...String(name ?? '').trim()].slice(0, MAX_NAME_LEN
 const cleanLang = (lang) => (lang === 'en' ? 'en' : 'hi');
 
 export class GameManager {
-  constructor(io, { betweenRoundsMs = BETWEEN_ROUNDS_MS, graceMs = GRACE_MS, now = Date.now } = {}) {
+  constructor(io, { betweenRoundsMs = BETWEEN_ROUNDS_MS, soloBreakMs = SOLO_BREAK_MS, graceMs = GRACE_MS, now = Date.now } = {}) {
     this.io = io;
     this.rooms = new Map();
     this.socketRoom = new Map();
     this.betweenRoundsMs = betweenRoundsMs;
+    this.soloBreakMs = soloBreakMs;
     this.graceMs = graceMs;
     this.now = now;
+  }
+
+  breakMs(room) {
+    return room.solo ? Math.min(this.betweenRoundsMs, this.soloBreakMs) : this.betweenRoundsMs;
+  }
+
+  notify(room, notice) {
+    this.io.to(room.code).emit('room:notice', notice);
   }
 
   newCode() {
@@ -52,6 +63,7 @@ export class GameManager {
       roundIdx: -1,
       round: null,
       lastResult: null,
+      history: [], // one entry per finished round, for the end-of-game summary
       nextRoundAt: 0,
       timeout: null,
     };
@@ -67,6 +79,7 @@ export class GameManager {
       token: randomBytes(16).toString('hex'),
       name: cleanName(name),
       score: 0,
+      solvedCount: 0, // words solved this game
       connected: true,
       away: false, // page hidden (switched app/tab) but connection alive; shown to others at once
       left: false,
@@ -97,18 +110,27 @@ export class GameManager {
   setSettings(socket, { rounds, timer, lang }) {
     const room = this.roomOf(socket);
     if (!room || room.hostId !== socket.id || room.phase !== 'lobby') return;
+    // Each tap sends only the option that changed; anything missing keeps its current value. (Sending the whole
+    // set from a stale screen let a second quick tap silently undo the first.)
     room.settings = {
       rounds: clamp(rounds, LIMITS.rounds, room.settings.rounds),
       timer: clamp(timer, LIMITS.timer, room.settings.timer),
     };
-    if (lang) room.lang = cleanLang(lang);
+    if (lang && cleanLang(lang) !== room.lang) {
+      room.lang = cleanLang(lang);
+      this.notify(room, { type: 'lang', lang: room.lang });
+    }
     this.broadcast(room);
   }
 
   startGame(socket) {
     const room = this.roomOf(socket);
     if (!room || room.hostId !== socket.id || !['lobby', 'ended'].includes(room.phase)) return;
-    for (const p of room.players.values()) p.score = 0;
+    for (const p of room.players.values()) {
+      p.score = 0;
+      p.solvedCount = 0;
+    }
+    room.history = [];
     const words = pickWords(room.lang, room.settings.rounds, Math.random, room.playedWords);
     // pickWords ignores the history when it can't fill the rounds with fresh words; start the history over then.
     if (words.some((w) => room.playedWords.has(w.word))) room.playedWords.clear();
@@ -119,16 +141,21 @@ export class GameManager {
   }
 
   // Rematch: send everyone back to the waiting room so the host can change settings before starting.
-  // A solo player has no one to wait for, so that game restarts straight away.
-  playAgain(socket) {
+  // A solo player has no one to wait for, so that game restarts straight away, unless they asked for the
+  // settings screen (toLobby).
+  playAgain(socket, { toLobby = false } = {}) {
     const room = this.roomOf(socket);
     if (!room || room.hostId !== socket.id || room.phase !== 'ended') return;
-    if (room.solo) return this.startGame(socket);
+    if (room.solo && !toLobby) return this.startGame(socket);
     // Players who are only mid-refresh keep their seat; only those who really left are dropped.
     for (const [id, p] of room.players) {
       if (p.left) room.players.delete(id);
-      else p.score = 0;
+      else {
+        p.score = 0;
+        p.solvedCount = 0;
+      }
     }
+    room.history = [];
     room.phase = 'lobby';
     room.words = [];
     room.roundIdx = -1;
@@ -180,7 +207,9 @@ export class GameManager {
     const hints = round.hints.get(socket.id) ?? {};
     const penalty = (hints.letter ? HINT_COST.letter : 0) + (hints.category ? HINT_COST.category : 0);
     const points = Math.max(MIN_POINTS, BASE_POINTS + Math.round(SPEED_POINTS * remaining) - penalty);
-    room.players.get(socket.id).score += points;
+    const me = room.players.get(socket.id);
+    me.score += points;
+    me.solvedCount += 1;
     round.solved.set(socket.id, { points, timeMs: elapsed });
     this.broadcast(room);
     this.endRoundIfAllSolved(room);
@@ -222,22 +251,32 @@ export class GameManager {
       results,
       leaderboard: this.leaderboard(room),
     };
-    room.nextRoundAt = this.now() + this.betweenRoundsMs;
+    room.history.push({ word: round.target.word, round: room.roundIdx + 1, results: results.map(({ id, solved, points, timeMs }) => ({ id, solved, points, timeMs })) });
+    const pause = this.breakMs(room);
+    room.nextRoundAt = this.now() + pause;
     this.broadcast(room);
-    this.io.to(room.code).emit('round:result', { ...room.lastResult, nextInMs: this.betweenRoundsMs });
-    room.timeout = setTimeout(() => this.nextRound(room), this.betweenRoundsMs);
+    this.io.to(room.code).emit('round:result', { ...room.lastResult, nextInMs: pause });
+    room.timeout = setTimeout(() => this.nextRound(room), pause);
+  }
+
+  // Solo only: the player is done reading the result and wants the next word now.
+  skipBreak(socket) {
+    const room = this.roomOf(socket);
+    if (!room || !room.solo || room.phase !== 'between') return;
+    clearTimeout(room.timeout);
+    this.nextRound(room);
   }
 
   endGame(room) {
     room.phase = 'ended';
     room.round = null;
     this.broadcast(room);
-    this.io.to(room.code).emit('game:end', { leaderboard: this.leaderboard(room) });
+    this.io.to(room.code).emit('game:end', { leaderboard: this.leaderboard(room), history: room.history });
   }
 
   leaderboard(room) {
     return [...room.players.values()]
-      .map(({ id, name, score }) => ({ id, name, score }))
+      .map(({ id, name, score, solvedCount, left }) => ({ id, name, score, solvedCount, left }))
       .sort((a, b) => b.score - a.score);
   }
 
@@ -256,6 +295,8 @@ export class GameManager {
         connected: p.connected,
         away: p.connected && p.away,
         solved: !!room.round?.solved.has(p.id),
+        solvedCount: p.solvedCount,
+        left: p.left,
       })),
     };
   }
@@ -308,10 +349,13 @@ export class GameManager {
     if (room.phase === 'lobby') room.players.delete(player.id);
 
     if (!this.alive(room)) return this.destroy(room);
+    let newHost = null;
     if (room.hostId === player.id) {
-      const next = [...room.players.values()].find((p) => !p.left && p.connected) ?? [...room.players.values()].find((p) => !p.left);
-      if (next) room.hostId = next.id;
+      newHost = [...room.players.values()].find((p) => !p.left && p.connected) ?? [...room.players.values()].find((p) => !p.left) ?? null;
+      if (newHost) room.hostId = newHost.id;
     }
+    // Everyone is told who left and, if it was the host, who runs the game now; without this a host leaving was silent.
+    if (!room.solo) this.notify(room, { type: 'left', id: player.id, name: player.name, newHostId: newHost?.id, newHostName: newHost?.name });
     this.presenceChanged(room);
   }
 
@@ -371,6 +415,7 @@ export class GameManager {
     if (lastResult) {
       for (const row of [...lastResult.results, ...lastResult.leaderboard]) if (row.id === oldId) row.id = newId;
     }
+    for (const h of room.history) for (const row of h.results) if (row.id === oldId) row.id = newId;
   }
 
   // Re-send whatever the screen needs for the current phase, since a refreshed page has forgotten it all.
@@ -395,7 +440,7 @@ export class GameManager {
     if (room.phase === 'between' && room.lastResult) {
       socket.emit('round:result', { ...room.lastResult, nextInMs: Math.max(0, room.nextRoundAt - this.now()) });
     } else if (room.phase === 'ended') {
-      socket.emit('game:end', { leaderboard: this.leaderboard(room) });
+      socket.emit('game:end', { leaderboard: this.leaderboard(room), history: room.history });
     }
     return null;
   }

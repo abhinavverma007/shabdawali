@@ -65,7 +65,8 @@ io.on('connection', (socket) => {
 
   on('room:settings', (payload) => games.setSettings(socket, payload ?? {}));
   on('game:start', () => games.startGame(socket));
-  on('game:again', () => games.playAgain(socket));
+  on('game:again', (payload) => games.playAgain(socket, { toLobby: !!payload?.toLobby }));
+  on('round:skip', () => games.skipBreak(socket));
   on('answer:submit', (payload, ack) => ack?.(games.submitAnswer(socket, payload?.answer)));
   on('hint:request', (payload, ack) => ack?.(games.requestHint(socket, payload?.type)));
   on('room:leave', () => games.leave(socket));

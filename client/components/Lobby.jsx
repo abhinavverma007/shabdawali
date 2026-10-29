@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import LangToggle from './LangToggle';
 
 const ROUND_OPTIONS = [3, 5, 8, 10];
@@ -29,9 +29,30 @@ function Choice({ label, options, value, onChange }) {
 
 export default function Lobby({ t, room, meId, names, onSettings, onStart, onLeave }) {
   const [copied, setCopied] = useState(false);
+  // What the host has just tapped, shown at once. The server's answer takes a moment; without this the screen lagged
+  // behind the taps and a second quick tap looked like it undid the first.
+  const [pending, setPending] = useState({});
   const isHost = room.hostId === meId;
   const offline = room.players.filter((p) => !p.connected).length;
-  const link = typeof window === 'undefined' ? '' : `${window.location.origin}/?room=${room.code}`;
+  // The link carries the room's language so a guest's first screen is already in it.
+  const link = typeof window === 'undefined' ? '' : `${window.location.origin}/?room=${room.code}&lang=${room.lang}`;
+
+  useEffect(() => {
+    setPending((p) => {
+      const next = { ...p };
+      if (next.rounds === room.settings.rounds) delete next.rounds;
+      if (next.timer === room.settings.timer) delete next.timer;
+      if (next.lang === room.lang) delete next.lang;
+      return next;
+    });
+  }, [room.settings.rounds, room.settings.timer, room.lang]);
+
+  const shown = { rounds: pending.rounds ?? room.settings.rounds, timer: pending.timer ?? room.settings.timer, lang: pending.lang ?? room.lang };
+  // Send only the option that was tapped, so a stale screen can never overwrite another option.
+  const change = (key, value) => {
+    setPending((p) => ({ ...p, [key]: value }));
+    onSettings({ [key]: value });
+  };
 
   const copy = async () => {
     try {
@@ -44,6 +65,32 @@ export default function Lobby({ t, room, meId, names, onSettings, onStart, onLea
   };
 
   const whatsapp = `https://wa.me/?text=${encodeURIComponent(`${t.title} - ${t.roomCode}: ${room.code}\n${link}`)}`;
+
+  const settingsControls = (
+    <>
+      <LangToggle compact lang={shown.lang} onChange={(lang) => change('lang', lang)} label={t.language} />
+      <Choice label={t.rounds} options={ROUND_OPTIONS} value={shown.rounds} onChange={(rounds) => change('rounds', rounds)} />
+      <Choice label={t.seconds} options={TIMER_OPTIONS} value={shown.timer} onChange={(timer) => change('timer', timer)} />
+    </>
+  );
+
+  // Playing alone: no code, no other players, just the settings and a Start button.
+  if (room.solo) {
+    return (
+      <div className="flex flex-1 flex-col justify-center gap-3">
+        <h1 className="text-center text-3xl font-extrabold text-orange-700">{t.settings}</h1>
+        <section className="card flex flex-col gap-2 !p-3">{settingsControls}</section>
+        <div className="flex gap-3">
+          <button className="btn-primary !min-h-[48px] flex-1 !text-lg" onClick={onStart}>
+            {t.startGame}
+          </button>
+          <button className="btn-secondary !min-h-[48px] !text-lg" onClick={onLeave}>
+            {t.leave}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col justify-center gap-2">
@@ -104,11 +151,7 @@ export default function Lobby({ t, room, meId, names, onSettings, onStart, onLea
       </section>
 
       {isHost ? (
-        <section className="card flex flex-col gap-2 !p-3">
-          <LangToggle compact lang={room.lang} onChange={(lang) => onSettings({ ...room.settings, lang })} label={t.language} />
-          <Choice label={t.rounds} options={ROUND_OPTIONS} value={room.settings.rounds} onChange={(rounds) => onSettings({ ...room.settings, rounds })} />
-          <Choice label={t.seconds} options={TIMER_OPTIONS} value={room.settings.timer} onChange={(timer) => onSettings({ ...room.settings, timer })} />
-        </section>
+        <section className="card flex flex-col gap-2 !p-3">{settingsControls}</section>
       ) : (
         <p className="card !p-3 text-center text-lg font-semibold">
           {t.waitingHost}

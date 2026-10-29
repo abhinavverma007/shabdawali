@@ -70,10 +70,10 @@ export default function Landing({ t, lang, setLang, name, setName, error, onCrea
         )}
 
         <div className="grid grid-cols-2 gap-3">
-          <button className="btn-primary !min-h-[48px] !px-3 !text-lg" onClick={withName(onCreate)}>
+          <button className="btn-primary !min-h-[48px] !px-2 !text-[17px] whitespace-nowrap" onClick={withName(onCreate)}>
             {t.createRoom}
           </button>
-          <button className="btn-secondary !min-h-[48px] !px-3 !text-lg" onClick={withName(onSolo)}>
+          <button className="btn-secondary !min-h-[48px] !px-2 !text-[17px] whitespace-nowrap" onClick={withName(onSolo)}>
             {t.playSolo}
           </button>
         </div>
