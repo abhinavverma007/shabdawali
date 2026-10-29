@@ -36,25 +36,27 @@ function rankPlayers(players) {
   return sorted.map((p) => ({ ...p, rank: sorted.findIndex((q) => q.score === p.score) + 1 }));
 }
 
-// Live standings that stay small however many people are playing: the top three on one line, plus a
-// chip for you when you are further down. Tap to open the full list in two columns.
+// Live standings. The collapsed view is always exactly ONE fixed-height row (the leader, plus you, or the
+// runner-up if you lead) so nothing below it ever moves while other players score; a tap opens the full
+// list in two columns underneath. Medals only appear once someone has points, so a 0-0 start shows none.
 function LiveBoard({ t, players, meId }) {
   const [open, setOpen] = useState(false);
   const ranked = rankPlayers(players);
   const solvedCount = ranked.filter((p) => p.solved).length;
+  const leader = ranked[0];
   const me = ranked.find((p) => p.id === meId);
-  const compact = ranked.length > 3;
-  const shown = open || !compact ? ranked : ranked.slice(0, 3);
+  const headline = [leader, me && me.id !== leader.id ? me : ranked[1]].filter(Boolean);
+  const badge = (p) => (p.score > 0 ? (MEDALS[p.rank - 1] ?? `${p.rank}.`) : '');
 
   const chip = (p) => (
     <li
       key={p.id}
+      aria-label={`${p.name} ${p.score}${p.solved ? ' ✓' : ''}`}
       className={`flex min-w-0 items-center gap-1 rounded-full px-2.5 py-1 text-sm font-semibold ${
         p.solved ? 'bg-green-200' : 'bg-white ring-1 ring-stone-300'
       } ${p.id === meId ? '!ring-2 ring-orange-600' : ''} ${p.connected && !p.away ? '' : 'opacity-50'}`}
     >
-      <span className="shrink-0">{MEDALS[p.rank - 1] ?? `${p.rank}.`}</span>
-      {p.solved && <span className="shrink-0">✓</span>}
+      {badge(p) && <span className="shrink-0">{badge(p)}</span>}
       <span className="truncate">{p.name}</span>
       <span className="shrink-0 font-bold">{p.score}</span>
     </li>
@@ -62,22 +64,24 @@ function LiveBoard({ t, players, meId }) {
 
   return (
     <section aria-label={t.leaderboard} className="flex flex-col gap-1.5">
-      <div className="flex items-start gap-1.5">
-        <ul className={open && compact ? 'grid min-w-0 flex-1 grid-cols-2 gap-1.5' : 'flex min-w-0 flex-1 flex-wrap gap-1.5'}>
-          {shown.map(chip)}
-        </ul>
-        {compact && (
+      <div className="flex h-9 items-center gap-1.5">
+        {open ? (
+          <span className="min-w-0 flex-1 px-1 text-base font-bold">{t.leaderboard}</span>
+        ) : (
+          <ul className="flex min-w-0 flex-1 gap-1.5 [&>li]:max-w-[50%]">{headline.map(chip)}</ul>
+        )}
+        {ranked.length > 2 && (
           <button
             type="button"
             aria-expanded={open}
             onClick={() => setOpen((o) => !o)}
-            className="shrink-0 rounded-full bg-stone-900 px-3 py-1 text-sm font-bold text-white"
+            className="shrink-0 rounded-full bg-stone-900 px-3 py-1.5 text-sm font-bold text-white"
           >
             {open ? '▴' : '▾'} {solvedCount}/{ranked.length}✓
           </button>
         )}
       </div>
-      {compact && !open && me && me.rank > 3 && <ul className="flex">{chip(me)}</ul>}
+      {open && <ul className="grid grid-cols-2 gap-1.5">{ranked.map(chip)}</ul>}
     </section>
   );
 }
@@ -182,7 +186,8 @@ export default function Game({ t, room, meId, round, result, onLeave }) {
   const low = remaining <= 5000;
 
   return (
-    <div className="flex flex-1 flex-col justify-center gap-2">
+    // Top-aligned, so the puzzle stays put under the player's finger instead of drifting as the screen changes.
+    <div className="flex flex-1 flex-col justify-start gap-2 pt-2">
       <header className="flex items-center justify-between text-lg font-bold">
         <span>
           {t.round} {round.round}/{round.totalRounds}
@@ -266,12 +271,12 @@ export default function Game({ t, room, meId, round, result, onLeave }) {
           {!locked && (
             <div className="flex flex-col gap-2">
               <div className={`grid gap-2 ${round.hasCategory ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                <button className="btn-secondary !min-h-[44px] !px-2 !text-base" onClick={() => askHint('letter')} disabled={!!hints.letter}>
-                  💡 {t.hintLetter} (−25)
+                <button className="btn-secondary !min-h-[44px] !px-1.5 !text-[15px] whitespace-nowrap" onClick={() => askHint('letter')} disabled={!!hints.letter}>
+                  💡 {t.hintLetter} −25
                 </button>
                 {round.hasCategory && (
-                  <button className="btn-secondary !min-h-[44px] !px-2 !text-base" onClick={() => askHint('category')} disabled={!!hints.category}>
-                    💡 {t.hintCategory} (−10)
+                  <button className="btn-secondary !min-h-[44px] !px-1.5 !text-[15px] whitespace-nowrap" onClick={() => askHint('category')} disabled={!!hints.category}>
+                    💡 {t.hintCategory} −10
                   </button>
                 )}
               </div>

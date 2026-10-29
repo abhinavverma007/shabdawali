@@ -46,10 +46,10 @@ export default function Lobby({ t, room, meId, onSettings, onStart, onLeave }) {
   const whatsapp = `https://wa.me/?text=${encodeURIComponent(`${t.title} - ${t.roomCode}: ${room.code}\n${link}`)}`;
 
   return (
-    <div className="flex flex-1 flex-col justify-center gap-3">
-      <section className="card !p-4 text-center">
+    <div className="flex flex-1 flex-col justify-center gap-2">
+      <section className="card !p-3 text-center">
         <div className="text-sm font-semibold text-stone-600">{t.roomCode}</div>
-        <div className="text-5xl font-extrabold leading-tight tracking-[0.2em] text-orange-700 sm:text-6xl" aria-live="polite">
+        <div className="text-4xl font-extrabold leading-tight tracking-[0.2em] text-orange-700 sm:text-6xl" aria-live="polite">
           {room.code}
         </div>
         <div className="mt-2 grid grid-cols-2 gap-3">
@@ -62,7 +62,7 @@ export default function Lobby({ t, room, meId, onSettings, onStart, onLeave }) {
         </div>
       </section>
 
-      <section className="card !p-4">
+      <section className="card !p-3">
         <h2 className="mb-2 text-base font-bold">
           {t.players} ({room.players.length}/10)
         </h2>
@@ -71,7 +71,7 @@ export default function Lobby({ t, room, meId, onSettings, onStart, onLeave }) {
           {room.players.map((p) => (
             <li
               key={p.id}
-              className={`flex min-w-0 items-center gap-1.5 rounded-xl px-3 py-2 text-base font-semibold ${
+              className={`flex min-w-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-base font-semibold ${
                 !p.connected
                   ? 'border-2 border-dashed border-stone-400 bg-stone-100 text-stone-600'
                   : p.away
@@ -102,13 +102,13 @@ export default function Lobby({ t, room, meId, onSettings, onStart, onLeave }) {
       </section>
 
       {isHost ? (
-        <section className="card flex flex-col gap-2 !p-4">
-          <LangToggle lang={room.lang} onChange={(lang) => onSettings({ ...room.settings, lang })} label={t.language} />
+        <section className="card flex flex-col gap-2 !p-3">
+          <LangToggle compact lang={room.lang} onChange={(lang) => onSettings({ ...room.settings, lang })} label={t.language} />
           <Choice label={t.rounds} options={ROUND_OPTIONS} value={room.settings.rounds} onChange={(rounds) => onSettings({ ...room.settings, rounds })} />
           <Choice label={t.seconds} options={TIMER_OPTIONS} value={room.settings.timer} onChange={(timer) => onSettings({ ...room.settings, timer })} />
         </section>
       ) : (
-        <p className="card !p-4 text-center text-lg font-semibold">
+        <p className="card !p-3 text-center text-lg font-semibold">
           {t.waitingHost}
           <span className="block text-base font-normal text-stone-600">
             {room.settings.rounds} {t.rounds} · {room.settings.timer} {t.seconds}

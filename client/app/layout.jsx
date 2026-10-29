@@ -23,6 +23,15 @@ export default function RootLayout({ children }) {
   return (
     <html lang="hi" className={font.variable}>
       <body className="font-sans antialiased">
+        {/* Anything typed into a form before the page's scripts finish loading is wiped when React takes over.
+            This runs first and remembers it (inputs opt in with data-prefill) so the form can restore it. */}
+        {/* A plain inline script on purpose: next/script's beforeInteractive still waits for the app's JS bundle. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "document.addEventListener('input',function(e){var t=e.target,k=t&&t.getAttribute&&t.getAttribute('data-prefill');if(k){(window.__prefill=window.__prefill||{})[k]=t.value}},true);",
+          }}
+        />
         <FullscreenOnTap />
         {children}
       </body>

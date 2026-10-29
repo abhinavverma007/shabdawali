@@ -14,9 +14,11 @@ export default function Results({ t, room, meId, leaderboard, onAgain, onLeave }
 
   useEffect(() => {
     let stopped = false;
+    let confettiRef = null;
     // Celebration is decoration: if the chunk fails to load, the podium must still render.
     import('canvas-confetti')
       .then(({ default: confetti }) => {
+        confettiRef = confetti;
         const end = Date.now() + 2500;
         (function frame() {
           if (stopped) return;
@@ -28,6 +30,7 @@ export default function Results({ t, room, meId, leaderboard, onAgain, onLeave }
       .catch(() => {});
     return () => {
       stopped = true;
+      confettiRef?.reset?.(); // clear any pieces still in the air so they do not drift into the next screen
     };
   }, []);
 

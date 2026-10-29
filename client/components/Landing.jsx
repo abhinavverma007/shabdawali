@@ -24,6 +24,15 @@ export default function Landing({ t, lang, setLang, name, setName, error, onCrea
     if (shared) setCode(shared.toUpperCase().slice(0, 4));
   }, []);
 
+  // Restore what the person typed before the page finished loading (see the capture script in layout.jsx).
+  useEffect(() => {
+    const typed = window.__prefill;
+    if (!typed) return;
+    if (typed.name) setName(typed.name);
+    if (typed.code) setCode(typed.code.toUpperCase().slice(0, 4));
+    window.__prefill = undefined;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const message = nameMissing ? t.nameRequired : error;
 
   return (
@@ -41,6 +50,7 @@ export default function Landing({ t, lang, setLang, name, setName, error, onCrea
           {t.yourName}
           <input
             ref={nameRef}
+            data-prefill="name"
             className={`input !min-h-[48px] !text-lg ${nameMissing ? '!border-red-700 ring-2 ring-red-700' : ''}`}
             value={name}
             maxLength={20}
@@ -75,6 +85,7 @@ export default function Landing({ t, lang, setLang, name, setName, error, onCrea
           <input
             className="input !min-h-[48px] min-w-0 text-center !text-2xl font-extrabold uppercase tracking-[0.3em]"
             aria-label={t.roomCode}
+            data-prefill="code"
             placeholder="B4K2"
             value={code}
             maxLength={4}
