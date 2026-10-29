@@ -218,3 +218,17 @@ test('an answer of the wrong length is rejected without scoring', () => {
   assert.equal(room.players.get('a').score, 0);
   clearTimeout(room.timeout);
 });
+
+test('names: up to 30 characters are kept whole, longer ones are cut, blanks become Player', () => {
+  const games = new GameManager(fakeIo(), { betweenRoundsMs: 10 });
+  const mk = (name) => {
+    const s = fakeSocket(`s${Math.random()}`);
+    const room = games.createRoom(s, { name, lang: 'en' });
+    return room.players.get(s.id).name;
+  };
+  assert.equal(mk('Kalpana Srivastava'), 'Kalpana Srivastava');
+  assert.equal(mk('Jagdish Narayan Mishra Prasad Sharma'), 'Jagdish Narayan Mishra Prasad', 'cut at 30, with no trailing space left behind');
+  assert.equal(mk('कल्पना श्रीवास्तव'), 'कल्पना श्रीवास्तव');
+  assert.equal(mk('   '), 'Player');
+  assert.equal(mk('😀'.repeat(40)).length, 60, '30 emoji kept intact, none split in half');
+});

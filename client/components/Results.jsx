@@ -8,7 +8,8 @@ const PODIUM = [
   { place: 3, medal: '🥉', height: 'h-10 sm:h-20', bg: 'bg-orange-300' },
 ];
 
-export default function Results({ t, room, meId, leaderboard, onAgain, onLeave }) {
+export default function Results({ t, room, meId, names, leaderboard, onAgain, onLeave }) {
+  const shown = (p) => names?.get(p.id) ?? p.name;
   const isHost = room.hostId === meId;
   const me = leaderboard.find((p) => p.id === meId);
 
@@ -51,19 +52,32 @@ export default function Results({ t, room, meId, leaderboard, onAgain, onLeave }
               return (
                 <div key={place} className="flex min-w-0 flex-1 flex-col items-center">
                   <div className="text-3xl sm:text-4xl">{medal}</div>
-                  <div className="w-full truncate text-center text-lg font-bold sm:text-xl">{p.name}{p.id === meId && ' ★'}</div>
+                  {/* The podium names are the headline: let them wrap to two lines instead of being cut short. */}
+                  <div
+                    title={p.name}
+                    className={`line-clamp-2 w-full break-words rounded-lg px-1 text-center text-lg font-bold leading-tight sm:text-xl ${
+                      p.id === meId ? 'bg-orange-100 ring-2 ring-orange-600' : ''
+                    }`}
+                  >
+                    {shown(p)}
+                  </div>
                   <div className={`flex w-full items-start justify-center rounded-t-2xl pt-1 text-xl font-extrabold sm:pt-2 sm:text-2xl ${height} ${bg}`}>{p.score}</div>
                 </div>
               );
             })}
           </section>
+          {/* The 4th place onwards: one full-width column. In two narrow columns names were cut to ~6 characters,
+              which hid which "Kalpana" was which. */}
           {leaderboard.length > 3 && (
-            <ul className="card grid grid-cols-2 gap-x-4 gap-y-1 !p-3">
+            <ul className="card flex flex-col gap-1 !p-3">
               {leaderboard.slice(3).map((p, i) => (
-                <li key={p.id} className={`flex min-w-0 justify-between gap-2 rounded-lg px-2 py-1 text-base ${p.id === meId ? 'bg-orange-100 font-bold' : ''}`}>
+                <li
+                  key={p.id}
+                  title={p.name}
+                  className={`flex min-w-0 justify-between gap-2 rounded-lg px-2 py-1 text-base ${p.id === meId ? 'bg-orange-100 font-bold ring-2 ring-orange-600' : ''}`}
+                >
                   <span className="truncate">
-                    {i + 4}. {p.name}
-                    {p.id === meId && ' ★'}
+                    {i + 4}. {shown(p)}
                   </span>
                   <span className="font-bold">{p.score}</span>
                 </li>

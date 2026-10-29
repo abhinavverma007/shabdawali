@@ -53,7 +53,7 @@ export default function Landing({ t, lang, setLang, name, setName, error, onCrea
             data-prefill="name"
             className={`input !min-h-[48px] !text-lg ${nameMissing ? '!border-red-700 ring-2 ring-red-700' : ''}`}
             value={name}
-            maxLength={20}
+            maxLength={30}
             aria-invalid={nameMissing}
             onChange={(e) => {
               setName(e.target.value);

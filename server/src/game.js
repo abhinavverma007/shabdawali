@@ -16,7 +16,9 @@ const MIN_POINTS = 20;
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 const clamp = (n, [lo, hi], fallback) => (Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : fallback);
-const cleanName = (name) => String(name ?? '').trim().slice(0, 20) || 'Player';
+// Long enough for an autofilled full name; screens show a short form (see client/lib/names.mjs), so length is not a layout problem.
+export const MAX_NAME_LENGTH = 30;
+const cleanName = (name) => [...String(name ?? '').trim()].slice(0, MAX_NAME_LENGTH).join('').trim() || 'Player';
 const cleanLang = (lang) => (lang === 'en' ? 'en' : 'hi');
 
 export class GameManager {

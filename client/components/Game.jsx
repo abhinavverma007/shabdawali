@@ -39,7 +39,7 @@ function rankPlayers(players) {
 // Live standings. The collapsed view is always exactly ONE fixed-height row (the leader, plus you, or the
 // runner-up if you lead) so nothing below it ever moves while other players score; a tap opens the full
 // list in two columns underneath. Medals only appear once someone has points, so a 0-0 start shows none.
-function LiveBoard({ t, players, meId }) {
+function LiveBoard({ t, players, meId, names }) {
   const [open, setOpen] = useState(false);
   const ranked = rankPlayers(players);
   const solvedCount = ranked.filter((p) => p.solved).length;
@@ -57,7 +57,7 @@ function LiveBoard({ t, players, meId }) {
       } ${p.id === meId ? '!ring-2 ring-orange-600' : ''} ${p.connected && !p.away ? '' : 'opacity-50'}`}
     >
       {badge(p) && <span className="shrink-0">{badge(p)}</span>}
-      <span className="truncate">{p.name}</span>
+      <span className="truncate">{names?.get(p.id) ?? p.name}</span>
       <span className="shrink-0 font-bold">{p.score}</span>
     </li>
   );
@@ -68,7 +68,8 @@ function LiveBoard({ t, players, meId }) {
         {open ? (
           <span className="min-w-0 flex-1 px-1 text-base font-bold">{t.leaderboard}</span>
         ) : (
-          <ul className="flex min-w-0 flex-1 gap-1.5 [&>li]:max-w-[50%]">{headline.map(chip)}</ul>
+          // No fixed 50/50 split: the two chips share the row by their content, so only the longer name gives up space.
+          <ul className="flex min-w-0 flex-1 gap-1.5">{headline.map(chip)}</ul>
         )}
         {ranked.length > 2 && (
           <button
@@ -87,7 +88,7 @@ function LiveBoard({ t, players, meId }) {
 }
 
 // One compact table for the end of a round: who got it and how fast, plus the running total.
-function RoundResult({ t, result, meId }) {
+function RoundResult({ t, result, meId, names }) {
   const ms = useCountdown(result.receivedAt + result.nextInMs);
   const thisRound = new Map(result.results.map((r) => [r.id, r]));
   const rows = rankPlayers(result.leaderboard);
@@ -108,7 +109,7 @@ function RoundResult({ t, result, meId }) {
               } ${p.id === meId ? 'ring-2 ring-orange-600' : ''}`}
             >
               <span className="font-bold">{MEDALS[p.rank - 1] ?? p.rank}</span>
-              <span className="truncate font-semibold">{p.name}</span>
+              <span className="truncate font-semibold">{names?.get(p.id) ?? p.name}</span>
               <span className="text-sm text-stone-700">{r?.solved ? `${(r.timeMs / 1000).toFixed(1)}s +${r.points}` : t.noAnswer}</span>
               <span className="text-right font-bold">{p.score}</span>
             </li>
@@ -122,7 +123,7 @@ function RoundResult({ t, result, meId }) {
   );
 }
 
-export default function Game({ t, room, meId, round, result, onLeave }) {
+export default function Game({ t, room, meId, names, round, result, onLeave }) {
   const tiles = round?.tiles ?? [];
   const length = round?.length ?? 0;
   // After a refresh the server re-sends what this player had already done in the round.
@@ -204,10 +205,10 @@ export default function Game({ t, room, meId, round, result, onLeave }) {
       </div>
 
       {result ? (
-        <RoundResult t={t} result={result} meId={meId} />
+        <RoundResult t={t} result={result} meId={meId} names={names} />
       ) : (
         <>
-          <LiveBoard t={t} players={room.players} meId={meId} />
+          <LiveBoard t={t} players={room.players} meId={meId} names={names} />
 
           <section key={shakeKey} className={`card flex flex-col items-center gap-3 !p-3 ${status === 'wrong' ? 'shake' : ''}`}>
             <div className="flex flex-wrap justify-center gap-2" aria-label="answer">

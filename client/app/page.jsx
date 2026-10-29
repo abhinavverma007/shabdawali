@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { STRINGS } from '../lib/i18n';
 import { getSocket, emitAck } from '../lib/socket';
 import { saveSession, loadSession, clearSession } from '../lib/session';
+import { displayNames } from '../lib/names.mjs';
 import Landing from '../components/Landing';
 import Lobby from '../components/Lobby';
 import Game from '../components/Game';
@@ -24,6 +25,8 @@ export default function Home() {
   const inRoom = useRef(false);
 
   // Inside a room the room's language wins, so everyone sees the same words and labels.
+  // Short names for tight spaces; computed from the whole roster so players with the same first name stay distinct.
+  const names = useMemo(() => displayNames(room?.players ?? []), [room?.players]);
   const uiLang = room?.lang ?? lang;
   const t = STRINGS[uiLang];
 
@@ -186,6 +189,7 @@ export default function Home() {
         t={t}
         room={room}
         meId={meId}
+        names={names}
         onSettings={(s) => getSocket().emit('room:settings', s)}
         onStart={() => getSocket().emit('game:start')}
         onLeave={leave}
@@ -197,6 +201,7 @@ export default function Home() {
         t={t}
         room={room}
         meId={meId}
+        names={names}
         leaderboard={final?.leaderboard ?? [...room.players].sort((a, b) => b.score - a.score)}
         onAgain={() => getSocket().emit('game:again')}
         onLeave={leave}
@@ -209,6 +214,7 @@ export default function Home() {
         t={t}
         room={room}
         meId={meId}
+        names={names}
         round={gameRound}
         result={room.phase === 'between' ? result : null}
         onLeave={leave}

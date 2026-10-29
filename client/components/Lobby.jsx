@@ -27,7 +27,7 @@ function Choice({ label, options, value, onChange }) {
   );
 }
 
-export default function Lobby({ t, room, meId, onSettings, onStart, onLeave }) {
+export default function Lobby({ t, room, meId, names, onSettings, onStart, onLeave }) {
   const [copied, setCopied] = useState(false);
   const isHost = room.hostId === meId;
   const offline = room.players.filter((p) => !p.connected).length;
@@ -71,16 +71,18 @@ export default function Lobby({ t, room, meId, onSettings, onStart, onLeave }) {
           {room.players.map((p) => (
             <li
               key={p.id}
+              title={p.name}
+              aria-current={p.id === meId ? 'true' : undefined}
               className={`flex min-w-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-base font-semibold ${
                 !p.connected
                   ? 'border-2 border-dashed border-stone-400 bg-stone-100 text-stone-600'
                   : p.away
                     ? 'bg-stone-100 text-stone-500'
                     : 'bg-amber-100'
-              }`}
+              } ${p.id === meId ? 'ring-2 ring-orange-600' : ''}`}
             >
-              <span className="truncate">{p.name}</span>
-              {p.id === meId && <span aria-label="you">★</span>}
+              {/* You are marked by the orange outline (as on the game screens), not a star that eats the name's space. */}
+              <span className="truncate">{names?.get(p.id) ?? p.name}</span>
               {p.id === room.hostId && (
                 <span className="shrink-0" title={t.host} aria-label={t.host}>
                   👑
