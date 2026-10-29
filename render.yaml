@@ -1,0 +1,22 @@
+# Render Blueprint: Dashboard -> New -> Blueprint -> pick this repo.
+# Keep this at ONE instance: rooms live in the server's memory, so a second instance would split players
+# across two separate worlds.
+services:
+  - type: web
+    name: shabdawali-server
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: NODE_ENV
+        value: production
+      # Your Vercel URL, e.g. https://shabdawali.vercel.app  (several allowed, comma separated;
+      # https://shabdawali-*.vercel.app also allows Vercel preview deployments). You enter it in the dashboard.
+      - key: CLIENT_ORIGIN
+        sync: false

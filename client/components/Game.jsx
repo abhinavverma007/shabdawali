@@ -1,0 +1,290 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import { emitAck } from '../lib/socket';
+
+function useCountdown(endsAt) {
+  const [ms, setMs] = useState(() => Math.max(0, (endsAt ?? 0) - Date.now()));
+  useEffect(() => {
+    if (!endsAt) return;
+    const tick = () => setMs(Math.max(0, endsAt - Date.now()));
+    tick();
+    const id = setInterval(tick, 200);
+    return () => clearInterval(id);
+  }, [endsAt]);
+  return ms;
+}
+
+// Tile indices that spell the player's already-solved word, or an empty set of slots.
+function arrangement(round) {
+  const length = round?.length ?? 0;
+  const answer = round?.resume?.solved ? round.resume.answer : null;
+  if (!answer) return Array(length).fill(null);
+  const taken = new Set();
+  return answer.map((unit) => {
+    const i = round.tiles.findIndex((tile, idx) => tile === unit && !taken.has(idx));
+    if (i >= 0) taken.add(i);
+    return i >= 0 ? i : null;
+  });
+}
+
+const MEDALS = ['🥇', '🥈', '🥉'];
+
+// Players sorted by score with a shared rank for ties.
+function rankPlayers(players) {
+  const sorted = [...players].sort((a, b) => b.score - a.score);
+  return sorted.map((p) => ({ ...p, rank: sorted.findIndex((q) => q.score === p.score) + 1 }));
+}
+
+// Live standings that stay small however many people are playing: the top three on one line, plus a
+// chip for you when you are further down. Tap to open the full list in two columns.
+function LiveBoard({ t, players, meId }) {
+  const [open, setOpen] = useState(false);
+  const ranked = rankPlayers(players);
+  const solvedCount = ranked.filter((p) => p.solved).length;
+  const me = ranked.find((p) => p.id === meId);
+  const compact = ranked.length > 3;
+  const shown = open || !compact ? ranked : ranked.slice(0, 3);
+
+  const chip = (p) => (
+    <li
+      key={p.id}
+      className={`flex min-w-0 items-center gap-1 rounded-full px-2.5 py-1 text-sm font-semibold ${
+        p.solved ? 'bg-green-200' : 'bg-white ring-1 ring-stone-300'
+      } ${p.id === meId ? '!ring-2 ring-orange-600' : ''} ${p.connected && !p.away ? '' : 'opacity-50'}`}
+    >
+      <span className="shrink-0">{MEDALS[p.rank - 1] ?? `${p.rank}.`}</span>
+      {p.solved && <span className="shrink-0">✓</span>}
+      <span className="truncate">{p.name}</span>
+      <span className="shrink-0 font-bold">{p.score}</span>
+    </li>
+  );
+
+  return (
+    <section aria-label={t.leaderboard} className="flex flex-col gap-1.5">
+      <div className="flex items-start gap-1.5">
+        <ul className={open && compact ? 'grid min-w-0 flex-1 grid-cols-2 gap-1.5' : 'flex min-w-0 flex-1 flex-wrap gap-1.5'}>
+          {shown.map(chip)}
+        </ul>
+        {compact && (
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+            className="shrink-0 rounded-full bg-stone-900 px-3 py-1 text-sm font-bold text-white"
+          >
+            {open ? '▴' : '▾'} {solvedCount}/{ranked.length}✓
+          </button>
+        )}
+      </div>
+      {compact && !open && me && me.rank > 3 && <ul className="flex">{chip(me)}</ul>}
+    </section>
+  );
+}
+
+// One compact table for the end of a round: who got it and how fast, plus the running total.
+function RoundResult({ t, result, meId }) {
+  const ms = useCountdown(result.receivedAt + result.nextInMs);
+  const thisRound = new Map(result.results.map((r) => [r.id, r]));
+  const rows = rankPlayers(result.leaderboard);
+  return (
+    <section className="card flex flex-col gap-2 !p-3">
+      <div className="text-center">
+        <div className="text-base text-stone-600">{t.answerWas}</div>
+        <div className="text-4xl font-extrabold leading-tight text-orange-700">{result.word}</div>
+      </div>
+      <ul className="flex flex-col gap-1">
+        {rows.map((p) => {
+          const r = thisRound.get(p.id);
+          return (
+            <li
+              key={p.id}
+              className={`grid grid-cols-[1.75rem_1fr_auto_3rem] items-center gap-2 rounded-lg px-2 py-1.5 text-base ${
+                r?.solved ? 'bg-green-100' : 'bg-stone-100'
+              } ${p.id === meId ? 'ring-2 ring-orange-600' : ''}`}
+            >
+              <span className="font-bold">{MEDALS[p.rank - 1] ?? p.rank}</span>
+              <span className="truncate font-semibold">{p.name}</span>
+              <span className="text-sm text-stone-700">{r?.solved ? `${(r.timeMs / 1000).toFixed(1)}s +${r.points}` : t.noAnswer}</span>
+              <span className="text-right font-bold">{p.score}</span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="text-center text-base text-stone-600">
+        {t.nextRound}: {Math.ceil(ms / 1000)}
+      </p>
+    </section>
+  );
+}
+
+export default function Game({ t, room, meId, round, result, onLeave }) {
+  const tiles = round?.tiles ?? [];
+  const length = round?.length ?? 0;
+  // After a refresh the server re-sends what this player had already done in the round.
+  const resume = round?.resume;
+  const [slots, setSlots] = useState(() => arrangement(round));
+  const [status, setStatus] = useState(resume?.solved ? 'solved' : 'playing'); // playing | wrong | solved
+  const [earned, setEarned] = useState(resume?.points ?? 0);
+  const [hints, setHints] = useState(resume?.hints ?? {});
+  const [shakeKey, setShakeKey] = useState(0);
+  const submitting = useRef(false);
+  const remaining = useCountdown(round?.localEndsAt);
+
+  useEffect(() => {
+    if (!resume?.solved) setSlots(Array(length).fill(null));
+  }, [length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const locked = status === 'solved' || !!result;
+  const used = new Set(slots.filter((s) => s !== null));
+
+  const place = (tile, slotIdx) => {
+    if (locked) return;
+    setStatus('playing');
+    setSlots((prev) => {
+      const next = prev.map((s) => (s === tile ? null : s));
+      const target = slotIdx ?? next.indexOf(null);
+      if (target === -1) return prev;
+      next[target] = tile;
+      return next;
+    });
+  };
+
+  const remove = (slotIdx) => {
+    if (locked) return;
+    setStatus('playing');
+    setSlots((prev) => prev.map((s, i) => (i === slotIdx ? null : s)));
+  };
+
+  useEffect(() => {
+    if (!length || slots.some((s) => s === null) || locked || submitting.current) return;
+    submitting.current = true;
+    emitAck('answer:submit', { answer: slots.map((i) => tiles[i]) }).then((res) => {
+      submitting.current = false;
+      if (res.correct) {
+        setEarned(res.points ?? 0);
+        setStatus('solved');
+      } else {
+        setStatus('wrong');
+        setShakeKey((k) => k + 1);
+      }
+    });
+  }, [slots]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const askHint = async (type) => {
+    const res = await emitAck('hint:request', { type });
+    if (res?.value) setHints((h) => ({ ...h, [type]: res.value }));
+  };
+
+  if (!round) return <p className="text-center text-2xl">…</p>;
+
+  const pct = Math.round((remaining / round.durationMs) * 100);
+  const low = remaining <= 5000;
+
+  return (
+    <div className="flex flex-1 flex-col justify-center gap-2">
+      <header className="flex items-center justify-between text-lg font-bold">
+        <span>
+          {t.round} {round.round}/{round.totalRounds}
+        </span>
+        <span className={low ? 'text-red-700' : ''} aria-live="off">
+          ⏱ {Math.ceil(remaining / 1000)}
+        </span>
+        <button className="text-base font-semibold underline" onClick={onLeave}>
+          {t.leave}
+        </button>
+      </header>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-stone-200" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+        <div className={`h-full transition-all ${low ? 'bg-red-600' : 'bg-orange-600'}`} style={{ width: `${pct}%` }} />
+      </div>
+
+      {result ? (
+        <RoundResult t={t} result={result} meId={meId} />
+      ) : (
+        <>
+          <LiveBoard t={t} players={room.players} meId={meId} />
+
+          <section key={shakeKey} className={`card flex flex-col items-center gap-3 !p-3 ${status === 'wrong' ? 'shake' : ''}`}>
+            <div className="flex flex-wrap justify-center gap-2" aria-label="answer">
+              {slots.map((tile, k) => (
+                <button
+                  key={k}
+                  type="button"
+                  disabled={locked}
+                  onClick={() => tile !== null && remove(k)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const dragged = Number(e.dataTransfer.getData('text/plain'));
+                    if (!Number.isNaN(dragged)) place(dragged, k);
+                  }}
+                  draggable={tile !== null && !locked}
+                  onDragStart={(e) => tile !== null && e.dataTransfer.setData('text/plain', String(tile))}
+                  className={`flex h-14 min-w-[3rem] items-center justify-center rounded-xl border-4 px-2 text-2xl font-extrabold sm:h-20 sm:min-w-[4.5rem] sm:px-3 sm:text-4xl ${
+                    tile === null
+                      ? 'border-dashed border-stone-400 bg-stone-50'
+                      : status === 'solved'
+                        ? 'border-green-700 bg-green-100'
+                        : status === 'wrong'
+                          ? 'border-red-700 bg-red-50'
+                          : 'border-stone-900 bg-amber-100'
+                  }`}
+                >
+                  {tile === null ? '' : tiles[tile]}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap justify-center gap-2" aria-label="letters">
+              {tiles.map((letter, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  disabled={locked || used.has(i)}
+                  draggable={!locked && !used.has(i)}
+                  onDragStart={(e) => e.dataTransfer.setData('text/plain', String(i))}
+                  onClick={() => place(i)}
+                  className={`flex h-14 min-w-[3rem] items-center justify-center rounded-xl bg-orange-600 px-2 text-2xl font-extrabold text-white shadow-md active:scale-95 sm:h-20 sm:min-w-[4.5rem] sm:px-3 sm:text-4xl ${
+                    used.has(i) ? 'invisible' : ''
+                  }`}
+                >
+                  {letter}
+                </button>
+              ))}
+            </div>
+
+            <p role="status" className="min-h-[1.75rem] text-xl font-bold">
+              {status === 'wrong' && <span className="text-red-700">{t.wrong}</span>}
+              {status === 'solved' && (
+                <span className="text-green-800">
+                  {t.correct} +{earned} {t.points}
+                </span>
+              )}
+            </p>
+          </section>
+
+          {!locked && (
+            <div className="flex flex-col gap-2">
+              <div className={`grid gap-2 ${round.hasCategory ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                <button className="btn-secondary !min-h-[44px] !px-2 !text-base" onClick={() => askHint('letter')} disabled={!!hints.letter}>
+                  💡 {t.hintLetter} (−25)
+                </button>
+                {round.hasCategory && (
+                  <button className="btn-secondary !min-h-[44px] !px-2 !text-base" onClick={() => askHint('category')} disabled={!!hints.category}>
+                    💡 {t.hintCategory} (−10)
+                  </button>
+                )}
+              </div>
+              {(hints.letter || hints.category) && (
+                <div className="text-center text-xl font-bold">
+                  {hints.letter && <span className="mr-4">{t.hintLetter}: {hints.letter}</span>}
+                  {hints.category && <span>{hints.category}</span>}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
