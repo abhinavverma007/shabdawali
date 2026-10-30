@@ -36,6 +36,29 @@ Set `CLIENT_ORIGIN` to the Vercel URL, e.g. `https://shabdawali.vercel.app` (com
 - **Render's free plan sleeps** after about 15 minutes with no traffic, and the next visitor waits roughly 30–60 seconds while it wakes. Before a family game, open `<render-url>/health` once, or use a paid plan.
 - **Do not set `PORT`** on Render; it provides one.
 
+## Link previews and search (SEO)
+
+**Already in place**
+- **WhatsApp / Facebook / Twitter previews:** every page has Open Graph and Twitter-card tags and a 1200x630 preview image (`client/public/og-image.png`). A shared room link previews as "Join my Shabdawali game! Room ABCD" and is kept out of search results.
+- **Pages Google can index:** `/` (Hindi), `/en` (English), and a "how to play" page per language (`/how-to-play`, `/en/how-to-play`) with the rules, scoring and an FAQ, which is the real text a search engine ranks.
+- **Technical SEO:** canonical addresses, hreflang pairs (Hindi/English), `robots.txt`, `sitemap.xml`, and structured data (WebSite, WebApplication/Game, Person, FAQPage).
+- Metadata lives in `client/lib/seo.mjs` and the FAQ in `client/lib/faq.mjs`; change the text there. Keep the FAQ in step with the game.
+
+**Environment variables (Vercel, all optional)**
+- `NEXT_PUBLIC_SITE_URL`: your public address, e.g. `https://www.shabdawali.in`. Set it as soon as you have your own domain; until then the Vercel URL is used.
+- `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION` / `NEXT_PUBLIC_BING_SITE_VERIFICATION`: the verification codes from Search Console / Bing Webmaster Tools.
+
+**What only you can do (this decides whether you rank)**
+1. **Get your own domain** (e.g. shabdawali.in or .com). A `*.vercel.app` address ranks poorly and cannot build trust of its own. Add it in Vercel, then set `NEXT_PUBLIC_SITE_URL`.
+2. **Google Search Console:** add the site, verify it, submit `/sitemap.xml`, then use "Request indexing" on `/`, `/en` and both how-to-play pages. Do the same in Bing Webmaster Tools.
+3. **Get links to it.** Search engines rank sites other sites point to. Post it on your LinkedIn, in family WhatsApp groups, on Reddit (r/india, r/hindi), Product Hunt, and Indian parenting and education communities. A few real mentions beat any tag.
+4. **Keep adding useful text.** More pages people search for (for example "Hindi word games for kids", "Antakshari-style word games") each give Google something to rank.
+5. **Be patient.** A new site usually takes weeks to be indexed and months to rank for competitive phrases. Nothing in the code can guarantee a position.
+
+**Checking previews**
+- WhatsApp caches a link's preview for a long time. After changing the image or text, share the link with a new ending (`?v=2`) to see the new one, or test with Facebook's Sharing Debugger (developers.facebook.com/tools/debug), which also refreshes Facebook's copy.
+- Run the Rich Results Test (search.google.com/test/rich-results) on `/en/how-to-play` to confirm the structured data.
+
 ## Refresh and reconnect
 
 Each player gets a private token when they create or join a room; the browser keeps it in `localStorage` along with the room code. If the connection drops (refresh, closed tab, network blip) the seat is held for 45 seconds (`GRACE_MS` in `server/src/game.js`). On reconnect the browser sends `room:resume` and gets its seat, score, host role, solved state and hints back, plus the current round, round result or final standings. After the grace period, or after pressing Leave, the seat is released. The same player in a second tab takes the seat over from the first.
