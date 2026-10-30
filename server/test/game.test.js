@@ -233,3 +233,64 @@ test('names: up to 30 characters are kept whole, longer ones are cut, blanks bec
   assert.equal(mk('   '), 'Player');
   assert.equal(mk('😀'.repeat(40)).length, 60, '30 emoji kept intact, none split in half');
 });
+
+test('a correct answer is confirmed to the player before the room is told', () => {
+  const io = fakeIo();
+  const games = new GameManager(io, { betweenRoundsMs: 10_000 });
+  const a = fakeSocket('a'), b = fakeSocket('b');
+  const room = games.createRoom(a, { name: 'A', lang: 'en', rounds: 2 });
+  games.joinRoom(b, { code: room.code, name: 'B' });
+  games.startGame(a);
+  const order = [];
+  const before = io.events.length;
+  games.submitAnswer(a, room.round.target.units, (res) => order.push(['ack', res.correct, io.events.length - before]));
+  // when the ack ran, nothing had been sent to the room yet
+  assert.deepEqual(order, [['ack', true, 0]]);
+  assert.equal(last(io, 'room:state').players.find((p) => p.id === 'a').solved, true);
+  clearTimeout(room.timeout);
+});
+
+test('wrong and rejected answers are also confirmed through the ack', () => {
+  const { games, s, room } = startSolo();
+  const results = [];
+  games.submitAnswer(s, ['X', 'X', 'X'], (r) => results.push(r));
+  games.submitAnswer(s, room.round.target.units.slice(1), (r) => results.push(r));
+  assert.deepEqual(results, [{ correct: false }, { correct: false }]);
+  clearTimeout(room.timeout);
+});
+
+test('answers that land together share one room update, and nothing is lost or sent stale', async () => {
+  const io = fakeIo();
+  const games = new GameManager(io, { betweenRoundsMs: 10_000, coalesceAnswers: true });
+  const [a, b, c] = ['a', 'b', 'c'].map(fakeSocket);
+  const room = games.createRoom(a, { name: 'A', lang: 'en', rounds: 2 });
+  games.joinRoom(b, { code: room.code, name: 'B' });
+  games.joinRoom(c, { code: room.code, name: 'C' });
+  games.startGame(a);
+  const states = () => io.events.filter((e) => e.name === 'room:state').length;
+  const before = states();
+  games.submitAnswer(a, room.round.target.units);
+  games.submitAnswer(b, room.round.target.units);
+  assert.equal(states(), before, 'no update yet: they are batched');
+  await new Promise((r) => setImmediate(r));
+  assert.equal(states(), before + 1, 'one update for both answers');
+  assert.deepEqual(last(io, 'room:state').players.map((p) => p.solved), [true, true, false]);
+  clearTimeout(room.timeout);
+});
+
+test('when the last answer ends the round, the round summary goes out once and no stale update follows it', async () => {
+  const io = fakeIo();
+  const games = new GameManager(io, { betweenRoundsMs: 10_000, coalesceAnswers: true });
+  const a = fakeSocket('a'), b = fakeSocket('b');
+  const room = games.createRoom(a, { name: 'A', lang: 'en', rounds: 2 });
+  games.joinRoom(b, { code: room.code, name: 'B' });
+  games.startGame(a);
+  games.submitAnswer(a, room.round.target.units);
+  games.submitAnswer(b, room.round.target.units);
+  assert.equal(room.phase, 'between');
+  const after = io.events.length;
+  await new Promise((r) => setImmediate(r));
+  assert.equal(io.events.length, after, 'the batched update was replaced by the round-end update, not sent after it');
+  assert.equal(last(io, 'room:state').phase, 'between');
+  clearTimeout(room.timeout);
+});

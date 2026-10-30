@@ -10,13 +10,20 @@ import { feedback, tickFor } from '../lib/sfx.mjs';
 // ends the round at once, so without this hold the celebration was replaced by the result before it could be seen.
 const SOLVED_HOLD_MS = 1500;
 
+// Time left, rounded UP to whole seconds. Everything on screen only changes once a second, so the game re-renders once a
+// second instead of five times (it used to tick every 200 ms), which keeps taps responsive on slow phones. The clock is
+// still checked four times a second so a new second shows up within 250 ms of when it really starts.
+const wholeSeconds = (ms) => Math.ceil(Math.max(0, ms) / 1000) * 1000;
 function useCountdown(endsAt) {
-  const [ms, setMs] = useState(() => Math.max(0, (endsAt ?? 0) - Date.now()));
+  const [ms, setMs] = useState(() => wholeSeconds((endsAt ?? 0) - Date.now()));
   useEffect(() => {
     if (!endsAt) return;
-    const tick = () => setMs(Math.max(0, endsAt - Date.now()));
+    const tick = () => setMs((prev) => {
+      const next = wholeSeconds(endsAt - Date.now());
+      return next === prev ? prev : next;
+    });
     tick();
-    const id = setInterval(tick, 200);
+    const id = setInterval(tick, 250);
     return () => clearInterval(id);
   }, [endsAt]);
   return ms;
@@ -291,7 +298,12 @@ export default function Game({ t, room, meId, names, round, result, onNext, onLe
         </button>
       </header>
       <div className="h-2 w-full overflow-hidden rounded-full bg-stone-200" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-        <div className={`h-full transition-all ${low ? 'bg-red-600' : 'bg-orange-600'}`} style={{ width: `${pct}%` }} />
+        {/* The clock is only re-read once a second, so the bar is set to where it will be a second from now and glides
+            there linearly: smooth motion with no per-frame work. */}
+        <div
+          className={`h-full ${low ? 'bg-red-600' : 'bg-orange-600'}`}
+          style={{ width: `${result ? 0 : Math.round((Math.max(0, left - 1000) / round.durationMs) * 100)}%`, transition: 'width 1s linear' }}
+        />
       </div>
 
       {showResult ? (

@@ -18,12 +18,26 @@ app.get('/', (_req, res) => res.type('text').send('shabdawali server is running'
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
 const server = http.createServer(app);
+// Behind Render's proxy Node's default 5 s keep-alive can close a connection the proxy is about to reuse, which shows
+// up as a failed first request. Hold connections longer than the proxy does.
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 66_000;
+
 const io = new Server(server, {
   cors: { origin: originChecker(ORIGINS) },
   // Every message in this game is a few hundred bytes; refuse anything much larger.
   maxHttpBufferSize: 10_000,
+  // Messages are tiny, so compressing them costs more time than it saves on the wire.
+  perMessageDeflate: false,
+  httpCompression: false,
+  // The game is not serving the socket.io client file.
+  serveClient: false,
+  // Notice a dead connection (phone switching wifi, lift, tunnel) in about 20 s rather than 45 s, so a stuck player is
+  // marked offline sooner and their seat is not held against the others.
+  pingInterval: 10_000,
+  pingTimeout: 10_000,
 });
-const games = new GameManager(io);
+const games = new GameManager(io, { coalesceAnswers: true });
 
 io.on('connection', (socket) => {
   // One bad message must not take every running game down with it.
@@ -67,7 +81,7 @@ io.on('connection', (socket) => {
   on('game:start', () => games.startGame(socket));
   on('game:again', (payload) => games.playAgain(socket, { toLobby: !!payload?.toLobby }));
   on('round:skip', () => games.skipBreak(socket));
-  on('answer:submit', (payload, ack) => ack?.(games.submitAnswer(socket, payload?.answer)));
+  on('answer:submit', (payload, ack) => games.submitAnswer(socket, payload?.answer, ack));
   on('hint:request', (payload, ack) => ack?.(games.requestHint(socket, payload?.type)));
   on('room:leave', () => games.leave(socket));
   on('disconnect', () => games.disconnect(socket));

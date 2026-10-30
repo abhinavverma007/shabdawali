@@ -24,7 +24,10 @@ const cleanName = (name) => [...String(name ?? '').trim()].slice(0, MAX_NAME_LEN
 const cleanLang = (lang) => (lang === 'en' ? 'en' : 'hi');
 
 export class GameManager {
-  constructor(io, { betweenRoundsMs = BETWEEN_ROUNDS_MS, soloBreakMs = SOLO_BREAK_MS, graceMs = GRACE_MS, now = Date.now } = {}) {
+  // coalesceAnswers: when several answers land in the same instant (ten players solving a word together), send ONE
+  // room update after all of them instead of one each. Off by default so tests see updates immediately.
+  constructor(io, { betweenRoundsMs = BETWEEN_ROUNDS_MS, soloBreakMs = SOLO_BREAK_MS, graceMs = GRACE_MS, now = Date.now, coalesceAnswers = false } = {}) {
+    this.coalesceAnswers = coalesceAnswers;
     this.io = io;
     this.rooms = new Map();
     this.socketRoom = new Map();
@@ -193,14 +196,20 @@ export class GameManager {
     this.io.to(room.code).emit('round:start', { ...room.round.meta, durationMs, remainingMs: durationMs, endsAt: room.round.endsAt });
   }
 
-  submitAnswer(socket, answer) {
+  // `ack` (optional) is how the answer is confirmed to the player who sent it. It is called as soon as the score is
+  // recorded, BEFORE the room is told, so the player never waits behind sending updates to everyone else.
+  submitAnswer(socket, answer, ack) {
+    const reply = (result) => {
+      ack?.(result);
+      return result;
+    };
     const room = this.roomOf(socket);
-    if (!room || room.phase !== 'round' || !Array.isArray(answer)) return { correct: false };
+    if (!room || room.phase !== 'round' || !Array.isArray(answer)) return reply({ correct: false });
     const { round } = room;
-    if (round.solved.has(socket.id)) return { correct: true };
+    if (round.solved.has(socket.id)) return reply({ correct: true });
     // An answer is always exactly as long as the word; reject anything else before doing any work on it.
-    if (answer.length !== round.target.units.length) return { correct: false };
-    if (!isCorrect(room.lang, round.target, answer.map(String))) return { correct: false };
+    if (answer.length !== round.target.units.length) return reply({ correct: false });
+    if (!isCorrect(room.lang, round.target, answer.map(String))) return reply({ correct: false });
 
     const elapsed = this.now() - round.startedAt;
     const remaining = Math.max(0, round.durationMs - elapsed) / round.durationMs;
@@ -211,9 +220,10 @@ export class GameManager {
     me.score += points;
     me.solvedCount += 1;
     round.solved.set(socket.id, { points, timeMs: elapsed });
-    this.broadcast(room);
+    const result = reply({ correct: true, points });
+    this.broadcastSoon(room);
     this.endRoundIfAllSolved(room);
-    return { correct: true, points };
+    return result;
   }
 
   requestHint(socket, type) {
@@ -302,7 +312,19 @@ export class GameManager {
   }
 
   broadcast(room) {
+    room.updateQueued = false; // this update carries everything a queued one would have
     this.io.to(room.code).emit('room:state', this.publicState(room));
+  }
+
+  // Like broadcast, but when many answers arrive in the same instant they share one update, sent right after the
+  // current batch of incoming messages has been handled. Any ordinary broadcast in between replaces it.
+  broadcastSoon(room) {
+    if (!this.coalesceAnswers) return this.broadcast(room);
+    if (room.updateQueued) return;
+    room.updateQueued = true;
+    setImmediate(() => {
+      if (room.updateQueued && this.rooms.get(room.code) === room) this.broadcast(room);
+    });
   }
 
   // --- presence: dropped connections, refreshes, and deliberate leaving ---

@@ -30,10 +30,25 @@ export const metadata = {
 // viewport-fit=cover lets the page use the full screen including around the notch; globals.css pads the safe areas.
 export const viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover', themeColor: '#ea580c' };
 
+// The game server, e.g. https://shabdawali-server.onrender.com. Baked in at build time like the client's socket code.
+const SERVER = (process.env.NEXT_PUBLIC_SERVER_URL || '').replace(/\/+$/, '');
+
 export default function RootLayout({ children }) {
   return (
     <html lang="hi" className={font.variable}>
+      {SERVER && (
+        <head>
+          {/* Opens the connection to the game server (DNS, TLS) while the page is still loading, so the live
+              connection is ready sooner. */}
+          <link rel="preconnect" href={SERVER} crossOrigin="anonymous" />
+        </head>
+      )}
       <body className="font-sans antialiased">
+        {SERVER && (
+          // Wakes a sleeping server (free hosting sleeps when idle) the moment the page opens, in parallel with the
+          // page's own scripts loading, instead of after them. The answer is not needed.
+          <script dangerouslySetInnerHTML={{ __html: `var p=location.pathname;if(p==='/'||p==='/en'||p==='/join')fetch(${JSON.stringify(SERVER + '/health')},{mode:'no-cors',cache:'no-store',keepalive:true}).catch(function(){});` }} />
+        )}
         {/* Anything typed into a form before the page's scripts finish loading is wiped when React takes over.
             This runs first and remembers it (inputs opt in with data-prefill) so the form can restore it. */}
         {/* A plain inline script on purpose: next/script's beforeInteractive still waits for the app's JS bundle. */}

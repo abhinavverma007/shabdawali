@@ -15,6 +15,15 @@ input {
   font-family: inherit;
 }
 
+/* Taps are the whole game. This makes every tap register at once and stops two quick taps (two tiles in a row) from
+   being read as a double-tap zoom, which on iPhone would zoom the page in the middle of a round. */
+button,
+a,
+[role='button'] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* iOS Safari zooms the page when a focused input is under 16px */
 input {
   font-size: max(16px, 1rem);

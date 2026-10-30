@@ -6,6 +6,10 @@ services:
     name: shabdawali-server
     runtime: node
     rootDir: server
+    # Singapore is the closest Render region to India: roughly 60-90 ms round trip for players there, against about
+    # 250 ms to the US default. Every tap-to-result in a game pays this once, so it is the biggest latency lever.
+    # A region cannot be changed on an existing service; recreate it from this blueprint to move.
+    region: singapore
     plan: free
     buildCommand: npm ci
     startCommand: npm start

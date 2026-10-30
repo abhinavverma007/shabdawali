@@ -9,6 +9,10 @@ export function getSocket() {
   return socket;
 }
 
+// Opens the connection as soon as the game's script loads (not after the page has hydrated), so by the time the player
+// has typed a name and tapped Create or Play Solo the socket is usually already open.
+if (typeof window !== 'undefined') getSocket();
+
 // Resolves with the ack, or {error:'connection'} if the server does not answer.
 export function emitAck(event, payload, timeoutMs = 5000) {
   return new Promise((resolve) => {
