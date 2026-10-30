@@ -43,7 +43,8 @@ test('pickWords gives unique words and ramps difficulty', () => {
 test('anagram of another pool word is accepted', () => {
   const target = { word: 'STAR', units: [...'STAR'] };
   assert.ok(isCorrect('en', target, [...'STAR']));
-  assert.ok(!isCorrect('en', target, [...'RATS']));
+  assert.ok(isCorrect('en', target, [...'RATS']), 'RATS is a pool word, so it is a valid anagram of STAR');
+  assert.ok(!isCorrect('en', target, [...'TSRA']), 'an anagram that is not a pool word is rejected');
 });
 
 function startSolo({ timer = 30, now } = {}) {

@@ -65,6 +65,6 @@ Each player gets a private token when they create or join a room; the browser ke
 
 ## Word lists
 
-`server/data/hindi_words.json` and `english_words.json` hold 5,000 unique words each. Format: `{"w": "word", "c": "category hint"}`; an empty `c` means no category hint is offered for that word. The server splits Hindi into aksharas (tiles) and keeps words of 3–8 tiles. English tiers are easy (3–4 letters) / medium (5–6) / hard (7+). Hindi tiers are easy (3 tiles) / medium (4) / hard (5+), because an akshara tile is much bigger than a letter.
+`server/data/hindi_words.json` and `english_words.json` hold 6,000 unique words each. Format: `{"w": "word", "c": "category hint"}`; an empty `c` means no category hint is offered for that word. The server splits Hindi into aksharas (tiles) and keeps words of 3–8 tiles. English tiers are easy (3–4 letters) / medium (5–6) / hard (7+). Hindi tiers are easy (3 tiles) / medium (4) / hard (5+), because an akshara tile is much bigger than a letter.
 
-The lists were drafted and screened by AI (format, uniqueness, spelling against a dictionary for English, two review passes for familiarity) and **have not been checked by a native speaker**. A human pass is recommended, especially for Hindi: remove any word a child or grandparent would not know. `npm test` fails if a list stops being 5,000 unique, well-formed words, so edits stay safe.
+The lists were drafted and screened by AI (format, uniqueness, spelling against a dictionary for English, two review passes for familiarity) and **have not been checked by a native speaker**. A human pass is recommended, especially for Hindi: remove any word a child or grandparent would not know. `npm test` fails if a list stops being 6,000 unique, well-formed words, so edits stay safe.
