@@ -1,6 +1,5 @@
 import { Noto_Sans_Devanagari } from 'next/font/google';
 import './globals.css';
-import FullscreenOnTap from '../components/FullscreenOnTap';
 import { SITE_URL, SITE_NAME, AUTHOR, COPY, KEYWORDS, siteJsonLd } from '../lib/seo.mjs';
 
 const font = Noto_Sans_Devanagari({
@@ -46,7 +45,6 @@ export default function RootLayout({ children }) {
         />
         {/* Tells search engines what this site is: a free, two-language, multiplayer word game by Abhinav Verma. */}
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd()) }} />
-        <FullscreenOnTap />
         {children}
         {/* Seen only with scripts off (and by simple crawlers): what the site is and where the rules are. */}
         <noscript>

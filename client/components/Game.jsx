@@ -208,6 +208,16 @@ export default function Game({ t, room, meId, names, round, result, onNext, onLe
     setSlots((prev) => prev.map((s, i) => (i === slotIdx ? null : s)));
   };
 
+  // Takes every placed tile back to the pool at once, so a wrong attempt is one tap to retry instead of
+  // tapping each placed tile in turn.
+  const canClear = !locked && slots.some((s) => s !== null);
+  const clearAll = () => {
+    if (!canClear) return;
+    feedback('remove');
+    setStatus('playing');
+    setSlots(Array(length).fill(null));
+  };
+
   useEffect(() => {
     if (!length || slots.some((s) => s === null) || locked || submitting.current) return;
     submitting.current = true;
@@ -338,6 +348,19 @@ export default function Game({ t, room, meId, names, round, result, onNext, onLe
                 </button>
               ))}
             </div>
+
+            {/* Under the letters, so showing or hiding it never moves a tile; it keeps its space either way. After a
+                wrong answer it turns orange, because that is the moment a player needs it. */}
+            <button
+              type="button"
+              onClick={clearAll}
+              disabled={!canClear}
+              aria-hidden={!canClear}
+              tabIndex={canClear ? 0 : -1}
+              className={`${status === 'wrong' ? 'btn-primary' : 'btn-secondary'} !min-h-[44px] !px-5 !text-base ${canClear ? '' : 'invisible'}`}
+            >
+              ↺ {t.clear}
+            </button>
 
             <p role="status" className="min-h-[1.75rem] text-xl font-bold">
               {status === 'wrong' && <span className="text-red-700">{t.wrong}</span>}

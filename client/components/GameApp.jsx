@@ -12,6 +12,18 @@ import Results from './Results';
 import Footer from './Footer';
 import Toast from './Toast';
 import { unlock } from '../lib/sfx.mjs';
+import { enterFullscreen } from './FullscreenOnTap';
+
+// The landing page reads ?room= when it mounts, so the code must be gone from the address before it does. Waiting for the
+// address-bar effect below is too late: the landing page mounts first and would prefill the room code just left.
+function dropRoomFromUrl() {
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('room')) return;
+    url.searchParams.delete('room');
+    window.history.replaceState(null, '', url);
+  } catch {}
+}
 
 // The whole game. The page that renders it says which language the visitor starts in (/ is Hindi, /en is English).
 export default function GameApp({ initialLang = 'hi' }) {
@@ -71,6 +83,7 @@ export default function GameApp({ initialLang = 'hi' }) {
   useEffect(() => {
     const socket = getSocket();
     const resetScreen = () => {
+      dropRoomFromUrl();
       setRoom(null);
       setRound(null);
       setResult(null);
@@ -202,6 +215,7 @@ export default function GameApp({ initialLang = 'hi' }) {
   const leave = () => {
     getSocket().emit('room:leave');
     clearSession();
+    dropRoomFromUrl();
     setRoom(null);
     setRound(null);
     setResult(null);
@@ -231,9 +245,9 @@ export default function GameApp({ initialLang = 'hi' }) {
         name={name}
         setName={setName}
         error={errorText}
-        onCreate={() => guard('room:create', { name, lang })}
-        onJoin={(code) => guard('room:join', { name, code })}
-        onSolo={() => guard('solo:start', { name, lang })}
+        onCreate={() => { enterFullscreen(); guard('room:create', { name, lang }); }}
+        onJoin={(code) => { enterFullscreen(); guard('room:join', { name, code }); }}
+        onSolo={() => { enterFullscreen(); guard('solo:start', { name, lang }); }}
       />
     );
   } else if (room.phase === 'lobby') {
