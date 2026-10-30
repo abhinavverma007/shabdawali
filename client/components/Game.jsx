@@ -123,6 +123,8 @@ function RoundResult({ t, result, meId, names, solo, onNext }) {
   const ms = useCountdown(result.receivedAt + result.nextInMs);
   const thisRound = new Map(result.results.map((r) => [r.id, r]));
   const rows = rankPlayers(result.leaderboard);
+  // After the last word there is no next round; the countdown leads to the final results.
+  const last = result.round >= result.totalRounds;
   return (
     <section className="card flex flex-col gap-2 !p-3">
       <div className="text-center">
@@ -152,11 +154,11 @@ function RoundResult({ t, result, meId, names, solo, onNext }) {
       {solo ? (
         // Alone, nobody else needs the pause: let the player move on when ready.
         <button className="btn-primary !min-h-[48px] !text-lg" onClick={onNext}>
-          {t.next} ({Math.ceil(ms / 1000)})
+          {last ? `${t.finalResults} →` : t.next} ({Math.ceil(ms / 1000)})
         </button>
       ) : (
         <p className="text-center text-base text-stone-600">
-          {t.nextRound}: {Math.ceil(ms / 1000)}
+          {last ? t.finalResults : t.nextRound}: {Math.ceil(ms / 1000)}
         </p>
       )}
     </section>

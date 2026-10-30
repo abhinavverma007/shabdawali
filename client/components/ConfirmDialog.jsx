@@ -24,7 +24,8 @@ export default function ConfirmDialog({ title, body, cancelLabel, confirmLabel, 
           {title}
         </h2>
         <p className="mt-1 text-lg text-stone-700">{body}</p>
-        <div className="mt-4 grid grid-cols-2 gap-3">
+        {/* One above the other: side by side, a label like "Keep playing" wrapped onto two lines on a phone. */}
+        <div className="mt-4 grid grid-cols-1 gap-3">
           <button className="btn-primary !min-h-[48px] !px-2 !text-lg" autoFocus onClick={onCancel}>
             {cancelLabel}
           </button>
