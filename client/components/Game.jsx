@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { emitAck } from '../lib/socket';
 import { rankPlayers } from '../lib/ranking.mjs';
 import ConfirmDialog from './ConfirmDialog';
+import { feedback, tickFor } from '../lib/sfx.mjs';
 
 // How long the "Well done! +N" screen stays up when solving the word is what ended the round. Alone, solving always
 // ends the round at once, so without this hold the celebration was replaced by the result before it could be seen.
@@ -190,6 +191,7 @@ export default function Game({ t, room, meId, names, round, result, onNext, onLe
   const place = (tile, slotIdx) => {
     if (locked) return;
     setStatus('playing');
+    feedback('tap');
     setSlots((prev) => {
       const next = prev.map((s) => (s === tile ? null : s));
       const target = slotIdx ?? next.indexOf(null);
@@ -202,6 +204,7 @@ export default function Game({ t, room, meId, names, round, result, onNext, onLe
   const remove = (slotIdx) => {
     if (locked) return;
     setStatus('playing');
+    feedback('remove');
     setSlots((prev) => prev.map((s, i) => (i === slotIdx ? null : s)));
   };
 
@@ -211,10 +214,12 @@ export default function Game({ t, room, meId, names, round, result, onNext, onLe
     emitAck('answer:submit', { answer: slots.map((i) => tiles[i]) }).then((res) => {
       submitting.current = false;
       if (res.correct) {
+        feedback('correct');
         solvedAt.current = Date.now();
         setEarned(res.points ?? 0);
         setStatus('solved');
       } else {
+        feedback('wrong');
         setStatus('wrong');
         setShakeKey((k) => k + 1);
       }
@@ -223,8 +228,31 @@ export default function Game({ t, room, meId, names, round, result, onNext, onLe
 
   const askHint = async (type) => {
     const res = await emitAck('hint:request', { type });
-    if (res?.value) setHints((h) => ({ ...h, [type]: res.value }));
+    if (res?.value) {
+      feedback('hint');
+      setHints((h) => ({ ...h, [type]: res.value }));
+    }
   };
+
+  // Sound and buzz for the clock and the round: a tick each second for the last five seconds (only while you are
+  // still working on the word), a blip when a new word starts, and a low "time's up" if you did not solve it.
+  const secondsLeft = Math.ceil((result ? 0 : remaining) / 1000);
+  const lastTick = useRef(null);
+  useEffect(() => {
+    if (!round || result || status === 'solved') return;
+    const kind = tickFor(secondsLeft, lastTick.current);
+    if (kind) {
+      lastTick.current = secondsLeft;
+      feedback(kind);
+    }
+  }, [secondsLeft]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // Not after a refresh: coming back to a round in progress is not a fresh start.
+    if (round && round.length > 0 && !round.resume) feedback('start');
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (showResult && status !== 'solved') feedback('timeout');
+  }, [showResult]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!round) return <p className="text-center text-2xl">…</p>;
 

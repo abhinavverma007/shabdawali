@@ -11,6 +11,7 @@ import Game from './Game';
 import Results from './Results';
 import Footer from './Footer';
 import Toast from './Toast';
+import { unlock } from '../lib/sfx.mjs';
 
 // The whole game. The page that renders it says which language the visitor starts in (/ is Hindi, /en is English).
 export default function GameApp({ initialLang = 'hi' }) {
@@ -48,6 +49,16 @@ export default function GameApp({ initialLang = 'hi' }) {
     setToasts((list) => [...list.slice(-2), { id, text }]);
     setTimeout(() => setToasts((list) => list.filter((x) => x.id !== id)), 4500);
   };
+
+  // Browsers only allow sound after a tap or key press; the first one anywhere wakes the audio up.
+  useEffect(() => {
+    document.addEventListener('pointerdown', unlock, { once: true });
+    document.addEventListener('keydown', unlock, { once: true });
+    return () => {
+      document.removeEventListener('pointerdown', unlock);
+      document.removeEventListener('keydown', unlock);
+    };
+  }, []);
 
   // A shared link carries the room's language (?lang=en), so a guest does not land on a page in the wrong language.
   useEffect(() => {

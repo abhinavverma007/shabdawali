@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { rankPlayers } from '../lib/ranking.mjs';
 import { bestKey, judgeScore, loadBest, saveBest } from '../lib/best.mjs';
+import { feedback } from '../lib/sfx.mjs';
 
 const PODIUM = [
   { place: 2, medal: '🥈', height: 'h-14 sm:h-28', bg: 'bg-stone-300' },
@@ -40,6 +41,15 @@ export default function Results({ t, room, meId, names, leaderboard, history, on
 
   // Confetti is for a good result: a group game always, a solo game when it set a new best or got every word.
   const celebrate = !room.solo || (bestInfo !== null && (bestInfo.isNewBest || solvedCount === total));
+  // The fanfare matches the confetti; a calmer two-note ending otherwise. Once, and only when the verdict is known.
+  const ready = !room.solo || bestInfo !== null;
+  const played = useRef(false);
+  useEffect(() => {
+    if (!ready || played.current) return;
+    played.current = true;
+    feedback(celebrate ? 'win' : 'end');
+  }, [ready, celebrate]);
+
   useEffect(() => {
     if (!celebrate) return;
     let stopped = false;
