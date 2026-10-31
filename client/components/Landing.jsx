@@ -86,7 +86,6 @@ export default function Landing({ t, lang, setLang, name, setName, error, onCrea
             className="input !min-h-[48px] min-w-0 text-center !text-2xl font-extrabold uppercase tracking-[0.3em]"
             aria-label={t.roomCode}
             data-prefill="code"
-            placeholder="B4K2"
             value={code}
             maxLength={4}
             onChange={(e) => setCode(e.target.value.toUpperCase())}
